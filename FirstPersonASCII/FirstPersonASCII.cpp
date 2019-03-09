@@ -1,5 +1,8 @@
 #include "pch.h"
 #include <iostream>
+#include <vector>
+#include <utility>
+#include <algorithm>
 #include <chrono>
 using namespace std;
 
@@ -11,8 +14,8 @@ int nScreenHeight = 40;
 int nMapHeight = 16;
 int nMapWidth = 16;
 
-float fPlayerX = 2.0f;
-float fPlayerY = 2.0f;
+float fPlayerX = 1.0f;
+float fPlayerY = 15.0f;
 float fPlayerA = 0.0f;
 float fFOV = 3.14159 / 4.0;
 float fDepth = 16.0f;
@@ -33,15 +36,15 @@ int main() {
 	map += L"#              #";
 	map += L"#              #";
 	map += L"#              #";
+	map += L"#     ####     #";
+	map += L"#     ####     #";
+	map += L"#     ####     #";
+	map += L"#     ####     #";
 	map += L"#              #";
-	map += L"#  #############";
-	map += L"#         #  ###";
-	map += L"#  ########  ###";
-	map += L"#            ###";
-	map += L"###########  ###";
-	map += L"#     #####  ###";
-	map += L"####  #####  ###";
-	map += L"               #";
+	map += L"#              #";
+	map += L"#              #";
+	map += L"#              #";
+	map += L"#              #";
 	map += L"################";
 
 
@@ -58,20 +61,50 @@ int main() {
 
 		//Controls
 		// Handle CCW Rotation
-		if (GetAsyncKeyState((unsigned short)'A') & 0x8000)
-			fPlayerA -= (1.2f) * fElapsedTime;
+		if (GetAsyncKeyState((unsigned short)'A') & 0x8000) {
+			fPlayerX -= cosf(fPlayerA) * 2.4f * fElapsedTime;
+			fPlayerY += sinf(fPlayerA) * 2.4f * fElapsedTime;
+			if (map[(int)fPlayerY * nMapWidth + (int)fPlayerX] == '#') {
+				fPlayerX += cosf(fPlayerA) * 2.4f * fElapsedTime;
+				fPlayerY -= sinf(fPlayerA) * 2.4f * fElapsedTime;
+			}
+		}
+			
 
-		if (GetAsyncKeyState((unsigned short)'D') & 0x8000)
-			fPlayerA += (1.2f) * fElapsedTime;
+		if (GetAsyncKeyState((unsigned short)'D') & 0x8000) {
+			fPlayerX += cosf(fPlayerA) * 2.4f * fElapsedTime;
+			fPlayerY -= sinf(fPlayerA) * 2.4f * fElapsedTime;
+			if (map[(int)fPlayerY * nMapWidth + (int)fPlayerX] == '#') {
+				fPlayerX -= cosf(fPlayerA) * 2.4f * fElapsedTime;
+				fPlayerY += sinf(fPlayerA) * 2.4f * fElapsedTime;
+			}
+		}
+			
 
 		if (GetAsyncKeyState((unsigned short)'W') & 0x8000) {
 			fPlayerX += sinf(fPlayerA) * 5.0f * fElapsedTime;
 			fPlayerY += cosf(fPlayerA) * 5.0f * fElapsedTime;
+			if (map[(int)fPlayerY * nMapWidth + (int)fPlayerX] == '#') {
+				fPlayerX -= sinf(fPlayerA) * 5.0f * fElapsedTime;
+				fPlayerY -= cosf(fPlayerA) * 5.0f * fElapsedTime;
+			}
 		}
 
 		if (GetAsyncKeyState((unsigned short)'S') & 0x8000) {
 			fPlayerX -= sinf(fPlayerA) * 5.0f * fElapsedTime;
 			fPlayerY -= cosf(fPlayerA) * 5.0f * fElapsedTime;
+			if (map[(int)fPlayerY * nMapWidth + (int)fPlayerX] == '#') {
+				fPlayerX += sinf(fPlayerA) * 5.0f * fElapsedTime;
+				fPlayerY += cosf(fPlayerA) * 5.0f * fElapsedTime;
+			}
+		}
+
+		if (GetAsyncKeyState(VK_LEFT) & 0x8000) {
+			fPlayerA -= (1.2f) * fElapsedTime;
+		}
+
+		if (GetAsyncKeyState(VK_RIGHT) & 0x8000) {
+			fPlayerA += (1.2f) * fElapsedTime;
 		}
 			
 
@@ -81,6 +114,7 @@ int main() {
 
 			float fDistanceToWall = 0.0;
 			bool bHitWall = false;
+			bool bBoundary = false;
 
 			float fEyeX = sinf(fRayAngle); // Unit vector for ray in player space
 			float fEyeY = cosf(fRayAngle);
@@ -101,6 +135,26 @@ int main() {
 					// Ray is inbounds so test to see if the ray cell is a wall block
 					if (map[nTestY * nMapWidth + nTestX] == '#') {
 						bHitWall = true;
+
+						vector<pair<float, float>> p; // distance, dot product
+
+						for (int tx = 0; tx < 2; tx++) {
+							for (int ty = 0; ty < 2; ty++) {
+								float vy = (float)nTestY + ty - fPlayerY;
+								float vx = (float)nTestX + tx - fPlayerX;
+								float d = sqrt(vx * vx + vy * vy);
+								float dot = (fEyeX * vx / d) + (fEyeY * vy / d);
+								p.push_back(make_pair(d, dot));
+							}
+						}
+
+						sort(p.begin(), p.end(), [](const pair<float, float> &left, const pair<float, float> &right) {return left.first < right.first; });
+
+						float fBound = 0.005;
+						if (acos(p.at(0).second) < fBound) bBoundary = true;
+						if (acos(p.at(1).second) < fBound) bBoundary = true;
+						//if (acos(p.at(2).second) < fBound) bBoundary = true;
+
 					}
 				}
 
@@ -118,7 +172,7 @@ int main() {
 			else if (fDistanceToWall < fDepth)			nShade = 0x2591;
 			else										nShade = ' ';    // Too far away
 
-			//if (bBoundary)								nShade = ' ';
+			if (bBoundary)								nShade = ' ';
 
 			for (int y = 0; y < nScreenHeight; y++) {
 				if (y <= nCeiling) {
